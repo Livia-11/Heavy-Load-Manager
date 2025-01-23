@@ -16,17 +16,14 @@
       <version>1.0.2</version>
     </dependency>
 
+
     <!-- MySQL Connector for database connectivity -->
     <dependency>
       <groupId>mysql</groupId>
       <artifactId>mysql-connector-java</artifactId>
       <version>8.0.33</version>
     </dependency>
-    <dependency>
-      <groupId>com.mysql</groupId>
-      <artifactId>mysql-connector-j</artifactId>
-      <version>8.0.33</version> <!-- Use the version that matches your JDK -->
-    </dependency>
+
 
 
     <!-- HikariCP for connection pooling -->
