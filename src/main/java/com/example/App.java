@@ -5,7 +5,10 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import com.github.javafaker.Faker;
+import java.util.Scanner;
 
 public class App {
 
@@ -14,85 +17,79 @@ public class App {
     private static final String DB_USER = "root";
     private static final String DB_PASSWORD = "";
     private static final int TOTAL_USERS = 10_000_000; // Total users to insert
-    private static final int BATCH_SIZE = 1000; // Batch size for SQL insertion
+    private static final int BATCH_SIZE = 500_000; // Optimized batch size for high throughput
+    private static final AtomicInteger progressCounter = new AtomicInteger(0);
 
     public static void main(String[] args) {
-        // Number of threads can be customized by user input or default value
-        int threadCount = 10; // Default thread count
+        Scanner scanner = new Scanner(System.in);
 
-        if (args.length > 0) {
-            try {
-                threadCount = Integer.parseInt(args[0]);
-                System.out.println("Using custom thread count: " + threadCount);
-            } catch (NumberFormatException e) {
-                System.err.println("Invalid thread count provided. Using default: " + threadCount);
-            }
-        }
+        System.out.println("Enter the number of threads to use:");
+        int threadCount = Integer.parseInt(scanner.nextLine());
 
-        System.out.println("Starting insertion of " + TOTAL_USERS + " users...");
+        System.out.println("Starting insertion of " + TOTAL_USERS + " users using " + threadCount + " threads...");
 
-        // Executor service to manage threads
         ExecutorService executor = Executors.newFixedThreadPool(threadCount);
 
-        // Calculate the number of users each thread will insert
-        int usersPerThread = TOTAL_USERS / threadCount;
-
-        // Submit threads to execute the insertions in parallel
+        // Submit insertion tasks
         for (int i = 0; i < threadCount; i++) {
-            final int start = i * usersPerThread;
-            final int end = (i == threadCount - 1) ? TOTAL_USERS : start + usersPerThread; // Handle last chunk
-            System.out.println("Thread " + (i + 1) + " will insert users from " + start + " to " + end);
-            executor.execute(() -> insertUsers(start, end));
+            executor.submit(new UserInsertionTask());
         }
 
-        // Shutdown the executor once all tasks are submitted
         executor.shutdown();
 
-        // Wait for all threads to complete before printing the final message
-        while (!executor.isTerminated()) {
-            // Wait for all threads to finish
+        try {
+            if (!executor.awaitTermination(10, TimeUnit.MINUTES)) {
+                executor.shutdownNow();
+                System.err.println("Executor did not terminate in the specified time.");
+            }
+        } catch (InterruptedException e) {
+            executor.shutdownNow();
+            Thread.currentThread().interrupt();
         }
 
         System.out.println("All threads have completed insertion.");
     }
 
-    // Method to insert users in batches
-    private static void insertUsers(int start, int end) {
-        try (Connection connection = DriverManager.getConnection(DB_URL, DB_USER, DB_PASSWORD);
-             PreparedStatement statement = connection.prepareStatement(
-                     "INSERT INTO users (first_name, last_name, email, address) VALUES (?, ?, ?, ?)")
-        ) {
-            DataGenerator generator = new DataGenerator();
-            int recordCount = 0;
+    static class UserInsertionTask implements Runnable {
 
-            // Loop to insert records in batches
-            for (int i = start; i < end; i++) {
-                List<String[]> batchData = generator.generateBatch(BATCH_SIZE);
-                for (String[] userData : batchData) {
-                    statement.setString(1, userData[0]);
-                    statement.setString(2, userData[1]);
-                    statement.setString(3, userData[2]);
-                    statement.setString(4, userData[3]);
-                    statement.addBatch();
+        @Override
+        public void run() {
+            try (Connection connection = DriverManager.getConnection(DB_URL, DB_USER, DB_PASSWORD);
+                 PreparedStatement statement = connection.prepareStatement(
+                         "INSERT INTO users (first_name, last_name, email, address) VALUES (?, ?, ?, ?)")) {
+                connection.setAutoCommit(false); // Disable autocommit for performance
+                DataGenerator generator = new DataGenerator();
+
+                // Try to insert in large chunks to minimize commits
+                while (true) {
+                    int start = progressCounter.getAndAdd(BATCH_SIZE);
+                    if (start >= TOTAL_USERS) break;
+
+                    int end = Math.min(start + BATCH_SIZE, TOTAL_USERS);
+                    List<String[]> batchData = generator.generateBatch(end - start);
+
+                    for (String[] userData : batchData) {
+                        statement.setString(1, userData[0]);
+                        statement.setString(2, userData[1]);
+                        statement.setString(3, userData[2]);
+                        statement.setString(4, userData[3]);
+                        statement.addBatch();
+                    }
+
+                    statement.executeBatch();
+                    connection.commit(); // Commit after each batch
+                    statement.clearBatch();
+
+                    System.out.println("Thread " + Thread.currentThread().getId() + ": Inserted up to user " + end);
                 }
 
-                // Execute batch when the batch size is reached
-                statement.executeBatch();
-                statement.clearBatch(); // Clear the batch after execution
-                recordCount += batchData.size();
-                System.out.println("Thread " + Thread.currentThread().getId() + " inserted " + recordCount + " records so far...");
+            } catch (SQLException e) {
+                System.err.println("Thread " + Thread.currentThread().getId() +
+                        " encountered an error: " + e.getMessage());
             }
-
-            System.out.println("Thread " + Thread.currentThread().getId() +
-                    " completed insertion of users from " + start + " to " + end);
-        } catch (SQLException e) {
-            // Handle SQL exceptions
-            System.err.println("Thread " + Thread.currentThread().getId() +
-                    " encountered an error: " + e.getMessage());
         }
     }
 
-    // DataGenerator class to generate user data
     static class DataGenerator {
         private final Faker faker;
 
@@ -100,7 +97,6 @@ public class App {
             this.faker = new Faker();
         }
 
-        // Generate a batch of user data
         public List<String[]> generateBatch(int batchSize) {
             List<String[]> batch = new ArrayList<>(batchSize);
             for (int i = 0; i < batchSize; i++) {
