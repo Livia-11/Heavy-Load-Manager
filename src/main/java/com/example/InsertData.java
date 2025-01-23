@@ -1,7 +1,5 @@
 package com.example;
 
-import java.io.BufferedWriter;
-import java.io.FileWriter;
 import java.io.IOException;
 import java.sql.*;
 import com.github.javafaker.Faker;
@@ -27,17 +25,17 @@ public class InsertData {
         int userThreadCount = promptForOperationChoice();
         if (userThreadCount < 1) return;
 
-        Properties properties = loadProperties();
+        Properties properties = propertiesLoad();
         ExecutorService executorService = Executors.newFixedThreadPool(userThreadCount);
         CountDownLatch completionLatch = new CountDownLatch(userThreadCount);
         RECORDS_PER_THREAD = TOTAL_RECORDS / userThreadCount;
 
-        handleDatabaseOperations(executorService, completionLatch, properties, userThreadCount);
+        databaseHandling(executorService, completionLatch, properties, userThreadCount);
 
         try {
             completionLatch.await(30, TimeUnit.MINUTES);
             executorService.shutdown();
-            logProgress(RECORDS_PER_THREAD * userThreadCount);
+            progress(RECORDS_PER_THREAD * userThreadCount);
         } catch ( InterruptedException e) {
             System.out.println("Error: " + e.getMessage());
         }
@@ -61,9 +59,10 @@ public class InsertData {
         return userThreadCount;
     }
 
-    private static Properties loadProperties() {
+    private static Properties propertiesLoad() {
         Properties properties = new Properties();
         try {
+
             properties.load(InsertData.class.getResourceAsStream("/application.properties"));
         } catch (IOException e) {
             System.out.println("Error loading properties: " + e.getMessage());
@@ -72,8 +71,8 @@ public class InsertData {
         return properties;
     }
 
-    private static void handleDatabaseOperations(ExecutorService executorService, CountDownLatch completionLatch,
-                                                 Properties properties, int threadCount) {
+    private static void databaseHandling(ExecutorService executorService, CountDownLatch completionLatch,
+                                         Properties properties, int threadCount) {
         String url = properties.getProperty("db.url");
         String user = properties.getProperty("db.user");
         String password = properties.getProperty("db.password");
@@ -90,7 +89,7 @@ public class InsertData {
         }
     }
 
-    private static void logProgress(long count) {
+    private static void progress(long count) {
         long currentTime = System.currentTimeMillis();
         double timeInSeconds = (currentTime - startTime) / 1000.0;
         double recordsPerSecond = count / timeInSeconds;
