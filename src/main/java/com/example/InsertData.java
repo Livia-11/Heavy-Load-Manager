@@ -22,7 +22,7 @@ public class InsertData {
 
     public static void main(String[] args) {
         startTime = System.currentTimeMillis();
-        int userThreadCount = promptForOperationChoice();
+        int userThreadCount = OperationChoice();
         if (userThreadCount < 1) return;
 
         Properties properties = propertiesLoad();
@@ -41,7 +41,7 @@ public class InsertData {
         }
     }
 
-    private static int promptForOperationChoice() {
+    private static int OperationChoice() {
         System.out.println("Choose operation:");
         System.out.println("1. Generate and insert data into database");
         System.out.print("Enter your choice (1): ");
@@ -77,6 +77,11 @@ public class InsertData {
         String user = properties.getProperty("db.user");
         String password = properties.getProperty("db.password");
 
+        if (url == null || user == null || password == null) {
+            System.out.println("Database connection error: Missing properties in application.properties");
+            return;
+        }
+
         try {
             for (int i = 0; i < threadCount; i++) {
                 Connection conn = DriverManager.getConnection(url, user, password);
@@ -88,6 +93,7 @@ public class InsertData {
             System.out.println("Database connection error: " + e.getMessage());
         }
     }
+
 
     private static void progress(long count) {
         long currentTime = System.currentTimeMillis();
@@ -129,7 +135,7 @@ class DataGenerator implements Runnable {
 
             createTableIfNotExists();
 
-            String insertQuery = "INSERT INTO try_tb (first_name, last_name, email) VALUES (?, ?, ?)";
+            String insertQuery = "INSERT INTO users_tb (first_name, last_name, email) VALUES (?, ?, ?)";
             Faker faker = new Faker();
             long lastCount = 0;
 
@@ -149,7 +155,6 @@ class DataGenerator implements Runnable {
                 }
 
                 executeBatchAndCommit(preparedStatement);
-                verifyFinalInsertion();
             }
         } catch (SQLException e) {
             System.out.println("Error in thread " + threadId + ": " + e.getMessage());
@@ -160,7 +165,7 @@ class DataGenerator implements Runnable {
 
     private void createTableIfNotExists() throws SQLException {
         try (var stmt = connection.createStatement()) {
-            stmt.execute("CREATE TABLE IF NOT EXISTS try_tb (" +
+            stmt.execute("CREATE TABLE IF NOT EXISTS users_tb (" +
                     "id BIGINT AUTO_INCREMENT PRIMARY KEY," +
                     "first_name VARCHAR(100)," +
                     "last_name VARCHAR(100)," +
@@ -184,7 +189,7 @@ class DataGenerator implements Runnable {
 
     private void checkAndLogProgress(long i, long lastCount) throws SQLException {
         try (var stmt = connection.createStatement();
-             var rs = stmt.executeQuery("SELECT COUNT(*) FROM u")) {
+             var rs = stmt.executeQuery("SELECT COUNT(*) FROM users_tb")) {
             if (rs.next()) {
                 long currentCount = rs.getLong(1);
                 long newRecords = currentCount - lastCount;
@@ -194,13 +199,4 @@ class DataGenerator implements Runnable {
         }
     }
 
-    private void verifyFinalInsertion() throws SQLException {
-        try (var stmt = connection.createStatement();
-             var rs = stmt.executeQuery("SELECT COUNT(*) FROM try_tb")) {
-            if (rs.next()) {
-                long finalCount = rs.getLong(1);
-                System.out.printf("Thread %d: Final verification - Total records: %d%n", threadId, finalCount);
-            }
-        }
-    }
 }
