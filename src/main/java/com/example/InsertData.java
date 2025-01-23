@@ -74,9 +74,9 @@ public class InsertData {
 
     private static void handleDatabaseOperations(ExecutorService executorService, CountDownLatch completionLatch,
                                                  Properties properties, int threadCount) {
-        String url = properties.getProperty("DB.URL");
-        String user = properties.getProperty("DB.USER");
-        String password = properties.getProperty("DB.PASSWORD");
+        String url = properties.getProperty("db.url");
+        String user = properties.getProperty("db.user");
+        String password = properties.getProperty("db.password");
 
         try {
             for (int i = 0; i < threadCount; i++) {
@@ -150,7 +150,7 @@ class DataGenerator implements Runnable {
                 }
 
                 executeBatchAndCommit(preparedStatement);
-
+                verifyFinalInsertion();
             }
         } catch (SQLException e) {
             System.out.println("Error in thread " + threadId + ": " + e.getMessage());
@@ -161,7 +161,7 @@ class DataGenerator implements Runnable {
 
     private void createTableIfNotExists() throws SQLException {
         try (var stmt = connection.createStatement()) {
-            stmt.execute("CREATE TABLE IF NOT EXISTS users_tb (" +
+            stmt.execute("CREATE TABLE IF NOT EXISTS try_tb (" +
                     "id BIGINT AUTO_INCREMENT PRIMARY KEY," +
                     "first_name VARCHAR(100)," +
                     "last_name VARCHAR(100)," +
@@ -185,7 +185,7 @@ class DataGenerator implements Runnable {
 
     private void checkAndLogProgress(long i, long lastCount) throws SQLException {
         try (var stmt = connection.createStatement();
-             var rs = stmt.executeQuery("SELECT COUNT(*) FROM users_tb")) {
+             var rs = stmt.executeQuery("SELECT COUNT(*) FROM u")) {
             if (rs.next()) {
                 long currentCount = rs.getLong(1);
                 long newRecords = currentCount - lastCount;
@@ -195,5 +195,13 @@ class DataGenerator implements Runnable {
         }
     }
 
-
+    private void verifyFinalInsertion() throws SQLException {
+        try (var stmt = connection.createStatement();
+             var rs = stmt.executeQuery("SELECT COUNT(*) FROM try_tb")) {
+            if (rs.next()) {
+                long finalCount = rs.getLong(1);
+                System.out.printf("Thread %d: Final verification - Total records: %d%n", threadId, finalCount);
+            }
+        }
+    }
 }
